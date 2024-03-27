@@ -1,0 +1,602 @@
+
+<html>
+<head>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="icon.webp">
+<title>Escaping Melons!</title>
+<script src="three.min.js"></script>
+<script src="GLTFLoader.js"></script>
+<script src="KeyboardState.js"></script>
+
+<!--Adapted from the blog post:
+		http://solutiondesign.com/blog/-/blogs/webgl-and-three-js-texture-mappi-1/-->
+
+<script>
+var myscene, scene, camera, renderer; // Three.js rendering basics.
+
+var canvas; // canvas on which the image is rendered.
+
+var keyboard = new KeyboardState(); // tracks the keyboard
+
+var watermelon, room, youwon;
+
+var watermelonHelper, watermelonbox;
+
+var sceneColliders = [], standCollide = [], shelfCollide = [], doorCollide = [], sculptCollide = [], sinkCollide= [], 
+bedCollide = [], foodCollide = []; // lists for collisions
+
+var interactions = [];
+
+// functions from https://replit.com/@nhowe/GLTF-City-Collision
+// object used to register and check for collisions
+function Collider(obj,static=false) {
+	this.obj = obj;
+	this.box = new THREE.Box3();
+	this.static = static;
+	if (static) {
+		this.box.setFromObject(obj);
+		this.check = checkStatic;
+	} else {
+		this.check = checkDynamic;
+	}
+}
+
+// checks collisions for an unmoving object
+function checkStatic(box) {
+	return box.intersectsBox(this.box);
+}
+
+// checks collisions for a moving object
+function checkDynamic(box) {
+	this.box.setFromObject(this.obj);
+	return box.intersectsBox(this.box);
+}
+
+// checks scene for collisions between colliders and obj
+function checkCollisions(obj) {
+		let isCollision = false;
+		for (var i = 0; !isCollision &&(i < sceneColliders.length); i++) {		
+				isCollision = sceneColliders[i].check(obj);
+		}
+	return isCollision;
+}
+
+// checks scene for collisions between nightstand and obj
+function nightstandCollide(obj) {
+	let interactCollision = false;
+	for (var i = 0; !interactCollision &&(i < standCollide.length); i++) {		
+			interactCollision = standCollide[i].check(obj);
+	}
+	return interactCollision;
+}
+
+	// checks scene for collisions between bookshelf and obj
+function bookshelfCollide(obj) {
+	let shelfCollision = false;
+	for (var i = 0; !shelfCollision &&(i < shelfCollide.length); i++) {		
+			shelfCollision = shelfCollide[i].check(obj);
+	}
+	return shelfCollision;
+}
+
+	// checks scene for collisions between door and obj
+function doorIntCollide(obj) {
+	let doorCollision = false;
+	for (var i = 0; !doorCollision &&(i < doorCollide.length); i++) {		
+			doorCollision = doorCollide[i].check(obj);
+	}
+	return doorCollision;
+	}
+	// checks scene for collisions between sculpture and obj
+function sculptCollision(obj) {
+	let sculptCollision = false;
+	for (var i = 0; !sculptCollision &&(i < sculptCollide.length); i++) {		
+			sculptCollision = sculptCollide[i].check(obj);
+	}
+	return sculptCollision;
+	}
+
+	// checks scene for collisions between sink and obj
+function sinkIntCollision(obj) {
+	let sinkCollision = false;
+	for (var i = 0; !sinkCollision &&(i < sinkCollide.length); i++) {		
+			sinkCollision = sinkCollide[i].check(obj);
+	}
+	return sinkCollision;
+	}
+
+	// checks scene for collisions between bed and obj
+function bedIntCollision(obj) {
+		let isCollision = false;
+		for (var i = 0; !isCollision &&(i < bedCollide.length); i++) {		
+				isCollision = bedCollide[i].check(obj);
+		}
+	return isCollision;
+}
+
+	// checks scene for collisions between food tray and obj
+function foodIntCollision(obj) {
+		let isCollision = false;
+		for (var i = 0; !isCollision &&(i < foodCollide.length); i++) {		
+				isCollision = foodCollide[i].check(obj);
+		}
+	return isCollision;
+}
+	
+// from https://threejsfundamentals.org/threejs/lessons/threejs-load-obj.html
+function frameArea(sizeToFitOnScreen, boxSize, boxCenter, camera) {
+	const halfSizeToFitOnScreen = sizeToFitOnScreen * 0.5;
+	const halfFovY = THREE.MathUtils.degToRad(camera.fov * .5);
+	const distance = halfSizeToFitOnScreen / Math.tan(halfFovY);
+
+	// compute a unit vector that points in the direction the camera is now
+	// from the center of the box
+	const direction = (new THREE.Vector3()).subVectors(camera.position, boxCenter).normalize();
+
+	// move the camera to a position distance units way from the center
+	// in whatever direction the camera was from the center already
+	camera.position.copy(direction.multiplyScalar(distance).add(boxCenter));
+
+	// pick some near and far values for the frustum that
+	// will contain the box.
+	camera.near = boxSize / 100;
+	camera.far = boxSize * 100;
+
+	camera.updateProjectionMatrix();
+
+	// point the camera to look at the center of the box
+	camera.lookAt(boxCenter.x, boxCenter.y, boxCenter.z);
+}
+
+// create the scene
+function createWorld() {
+
+		renderer.setClearColor(0); // Set background color (0, or 0x000000, is black).
+		myscene = new THREE.Scene(); // Create a new scene which we can add objects to.
+		scene = new THREE.Object3D();
+		myscene.add(scene);
+
+		// create a camera, sitting on the positive z-axis.  The camera is not part of the scene.
+		camera = new THREE.PerspectiveCamera(60, canvas.width/canvas.height, 1, 5000);
+		// camera position will be set later after watermelon loads
+
+		var ambientLight = new THREE.AmbientLight( 0xF5F5DC, 0.6 );
+		scene.add(ambientLight);
+	
+		var roomLight = new THREE.DirectionalLight( 0xFFE4B5, 1.2 );
+		roomLight.position.set(-8,3,0);
+		scene.add(roomLight);
+
+		// Instantiate a loader
+		var loader = new THREE.GLTFLoader();
+
+		// Load a glTF resource
+		loader.load(
+				'watermelon.glb',
+				// this model is from https://sketchfab.com/3d-models/cartoon-lowpoly-small-city-free-pack-edd1c604e1e045a0a2a552ddd9a293e6
+
+				// function below is called when the resource is loaded
+				function ( gltf ) {
+						watermelon = gltf.scene;  // search through the loaded file for the object we want
+						scene.add( watermelon ); 
+					// camera pos
+						watermelon.rotation.set(0,Math.PI/2,0);
+						watermelon.position.z = 2;
+						// from https://threejsfundamentals.org/threejs/lessons/threejs-load-obj.html
+						// setting box size
+						const box = new THREE.Box3().setFromObject(watermelon);
+						const boxSize = box.getSize(new THREE.Vector3()).length();
+						const boxCenter = box.getCenter(new THREE.Vector3());
+					
+						camera.position.set(0,20,0);
+						camera.rotation.x = -Math.PI/2;
+
+						// compute bounding box of watermelon 
+						watermelonbox = new THREE.Box3();
+						watermelonbox.setFromObject(watermelon);
+						console.log(watermelonbox);
+
+						requestAnimationFrame( render );  // we don't want to start rendering until the model is loaded
+				},
+		);
+
+		// add room
+		room = new THREE.Object3D();
+		var loader = new THREE.TextureLoader(); // loading texture
+
+		//add floor
+		var floorGeom = new THREE.BoxGeometry(20, 20, 2);
+		var floorMaterial = new THREE.MeshPhongMaterial( { color: "grey", flatShading: true } );
+		floorMaterial.map = loader.load("floor.jpeg");
+		floorMaterial.bumpMap = loader.load("floor.jpeg");
+		floorMaterial.bumpScale = 2; 
+		var floor = new THREE.Mesh(floorGeom, floorMaterial);
+		floor.rotation.x = Math.PI/2;
+		floor.position.set(0,-5,0);
+	
+		// load texture for walls
+		var stoneWall = loader.load("stone wall.jpg");
+		var stoneWallMap = new THREE.MeshPhongMaterial( { map: stoneWall, flatShading: true } );
+		var stoneMaterial = new THREE.MeshBasicMaterial({ color: "grey" });
+		stoneMaterial.map = loader.load("stone wall.jpg"); // loading stone texture
+		stoneMaterial.bumpMap = loader.load("stone wall.jpg");
+		stoneMaterial.bumpScale = 5; // making bump intense
+
+		// left wall
+		var leftWallGeom = new THREE.BoxGeometry (19, 8, 2);
+		var leftWall = new THREE.Mesh(leftWallGeom, stoneMaterial);
+
+		leftWall.rotation.y = Math.PI/2;
+		leftWall.position.set(-10,0,0);
+	
+		// right wall
+		var rightWallGeom = new THREE.BoxGeometry(19, 8, 2);
+		var rightWall = new THREE.Mesh(rightWallGeom, stoneMaterial);
+	
+		rightWall.rotation.y = Math.PI/2;
+		rightWall.position.set(10,0,0);
+
+		// back wall 
+		var backWallGeom = new THREE.BoxGeometry(19,8,1);
+		var backWall = new THREE.Mesh(backWallGeom, stoneMaterial);
+		backWall.position.set(0,0,-9);
+
+		// front wall
+		var frontWallGeom = new THREE.BoxGeometry(19,8,1);
+		var frontWall = new THREE.Mesh(frontWallGeom, stoneMaterial);
+		frontWall.position.set(0,0,9);
+
+		// nightstand 
+		var nightstandMap = loader.load("nightstand.jpeg");
+		var nightstandLoad = new THREE.MeshPhongMaterial( { map: nightstandMap } );
+		var nightstandGeom = new THREE.BoxGeometry(6,2,3);
+		var nightstandMaterial = new THREE.MeshPhongMaterial( { map: nightstandMap, flatShading: true } );
+		var nightstand = new THREE.Mesh(nightstandGeom, nightstandMaterial);
+		// setting pos of nightstand
+		nightstand.position.set(-10,0,4);
+
+		// add drawer to nightstand
+		var drawer = new THREE.Mesh(new THREE.BoxGeometry(0.5,1,2),new THREE.MeshPhongMaterial( { color: "saddlebrown", flatShading: true } ));
+		drawer.position.set(3,0,0);
+		nightstand.add(drawer);
+
+		// bookshelf 
+		var shelfMap = loader.load("bookshelf.jpeg");
+		var shelfLoad = new THREE.MeshPhongMaterial( { map: shelfMap } );
+		var shelfGeom = new THREE.BoxGeometry(3,4,5);
+		var shelfMaterial = new THREE.MeshPhongMaterial( { map: shelfMap, flatShading: true } );
+	
+		var bookshelf = new THREE.Mesh(shelfGeom, shelfMaterial);
+		bookshelf.position.set(9,0,0);
+
+		//border around bookshelf
+		border = new THREE.Object3D();
+		var borderLeft = new THREE.Mesh(new THREE.BoxGeometry(3,4,1),new THREE.MeshPhongMaterial( { color: "saddlebrown", flatShading: true } ));
+		borderLeft.position.set(0,0,-3);
+	
+		var bordertop = new THREE.Mesh(new THREE.BoxGeometry(3,1,7),new THREE.MeshPhongMaterial( { color: "saddlebrown", flatShading: true } ));
+		bordertop.position.set(0,2,0);
+
+		var borderRight = new THREE.Mesh(new THREE.BoxGeometry(3,4,1),new THREE.MeshPhongMaterial( { color: "saddlebrown", flatShading: true } ));
+		borderRight.position.set(0,0,3);
+	
+		border.add(borderLeft);
+		border.add(bordertop);
+		border.add(borderRight);
+		bookshelf.add(border);
+
+		// door
+		var doorMap = loader.load("door.png");
+		var doorLoad = new THREE.MeshPhongMaterial( { map: doorMap } );
+		var doorGeom = new THREE.BoxGeometry(3,5,2);
+		var doorMaterial = new THREE.MeshPhongMaterial( { map: doorMap, flatShading: true } );
+		var door = new THREE.Mesh(doorGeom, doorMaterial);
+		door.position.set(0,0,-9);
+
+		// bed
+		var bedMap = loader.load("bed.png");
+		var bedLoad = new THREE.MeshPhongMaterial( { map: bedMap } );
+		var bedGeom = new THREE.BoxGeometry(2,2,6);
+		var shelfMaterial = new THREE.MeshPhongMaterial( { map: bedMap, flatShading: true } );
+
+		var bed = new THREE.Mesh(bedGeom, bedLoad);
+		bed.rotation.y = Math.PI/2;
+		bed.position.set (-6,0,7);
+		
+		room.add(floor);	
+		room.add(bed);
+		room.add(leftWall);
+		room.add(rightWall);
+		room.add(backWall);
+		room.add(frontWall);
+		room.add(nightstand);
+		room.add(bookshelf);
+		room.add(door);
+		scene.add(room);
+
+		// add boxes around these objects to the collider list
+		sceneColliders.push(new Collider(leftWall));
+		sceneColliders.push(new Collider(rightWall));
+		sceneColliders.push(new Collider(frontWall));
+		sceneColliders.push(new Collider(backWall));
+		bedCollide.push(new Collider(bed));
+		standCollide.push(new Collider(nightstand));
+		shelfCollide.push(new Collider(bookshelf));
+		doorCollide.push(new Collider(door));
+
+		// in the corner to remind everyone that the world revolves around canteloupes and watermelons should revolve around canteloupes.
+
+		sculpture = new THREE.Object3D();
+		// set up the earth vars
+		var earthRadius = 0.5,
+				earthSegments = 100,
+				earthRings = 100;
+
+		// set up the canteloupe vars
+		var canteRadius = 0.3,
+				canteSegments = 100,
+				canteRings = 100;
+
+		// set up the watermelon vars
+		var waterRadius = 0.1,
+				waterSegments = 100,
+				waterRings = 100;
+		// create earth's material
+		var earthMap = loader.load("canteloupe.png"); // texture for earth
+		var earthGeometry = new THREE.SphereGeometry(earthRadius, earthSegments, earthRings);
+		var earthMaterial = new THREE.MeshLambertMaterial({ map: earthMap });
+		earth = new THREE.Mesh(earthGeometry, earthMaterial);
+		earth.position.set(5, 0, -5);
+
+		// create canteloupe planet material
+		var canteMap = loader.load("watermelon.jpeg");
+		var canteGeometry = new THREE.SphereGeometry(canteRadius, canteSegments, canteRings);
+		var canteMaterial = new THREE.MeshLambertMaterial({ map: canteMap });
+		canteloupe = new THREE.Mesh(canteGeometry, canteMaterial);
+		canteloupe.position.set(-1.8, 0, 0);
+
+		// adding planets to window
+		earth.add(canteloupe);
+		sculpture.add(earth);
+		room.add(sculpture); 
+	
+		sculptCollide.push(new Collider(earth));
+		sculptCollide.push(new Collider(canteloupe));
+
+	// light 
+		var lightMap = loader.load("light.png");
+		var lightLoad = new THREE.MeshPhongMaterial( { map: lightMap } );
+		var lightGeom = new THREE.BoxGeometry(1,3,1);
+		var lightMaterial = new THREE.MeshPhongMaterial( { map: lightMap, flatShading: true } );
+
+		var lightFixture = new THREE.Mesh(lightGeom, lightLoad);
+		lightFixture.position.set(-8,2,0);
+		room.add(lightFixture);
+
+	// sink
+		var sink = new THREE.Mesh(new THREE.BoxGeometry(2,0.5,2),new THREE.MeshPhongMaterial( { color: "white", flatShading: true } ));
+		sink.position.set(6,0,8);
+
+		var water = new THREE.Mesh(new THREE.BoxGeometry(1,0.5,1),new THREE.MeshPhongMaterial( { color: "blue", flatShading: true } ));
+		water.position.set(0,0,0);
+
+		var faucet = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,1),new THREE.MeshPhongMaterial( { color: "grey", flatShading: true } ));
+		faucet.position.set(0,1,0);
+
+		sink.add(faucet);
+		sink.add(water);
+		room.add(sink);
+
+		sinkCollide.push(new Collider(sink));
+
+		// food tray
+		var foodMap = loader.load("food tray.png");
+		var foodLoad = new THREE.MeshPhongMaterial( { map: foodMap } );
+		var foodGeom = new THREE.BoxGeometry(3,0.5,3);
+		var foodMaterial = new THREE.MeshPhongMaterial( { map: foodMap, flatShading: true } );
+
+		var foodTray = new THREE.Mesh(foodGeom, foodLoad);
+		foodTray.position.set(-5,0,-6);
+		room.add(foodTray);
+
+		foodCollide.push(new Collider(foodTray));
+	}
+
+const speed = 0.2; // speed of watermelon
+
+function youWon() {
+	var loader = new THREE.TextureLoader(); // loading texture
+	//add ending screen 
+	var youwonMap = loader.load("youwon.png");
+	var youwonGeom = new THREE.BoxGeometry(20, 20, 20);
+	var youwonMaterial = new THREE.MeshPhongMaterial( { map: youwonMap, flatShading: true } );
+	document.getElementById("interactions").textContent=""; // clear interactions text
+	var ending = new THREE.Mesh(youwonGeom, youwonMaterial);
+	scene.add(ending);
+}
+
+// modify the scene to produce the desired animation -- 
+function updateAnimation() {
+		// some used from https://replit.com/@nhowe/GLTF-City-Collision
+		// scan keyboard
+		keyboard.update();
+		earth.rotation.y += 0.03;
+
+		// current position
+		var oldX = watermelon.position.x;
+		var oldY = watermelon.position.y;
+		var oldZ = watermelon.position.z;
+		var newX = oldX, newY = oldY, newZ = oldZ;
+
+		// figure out requested movement
+		if ( keyboard.pressed('W') || keyboard.pressed("up") ) {
+				// move forward
+				newZ = oldZ-speed;
+				//watermelon.rotation.x += 0.03;
+		} else if ( keyboard.pressed('S') || keyboard.pressed("down") ) {
+				// move backward
+				newZ = oldZ+speed;
+				//watermelon.rotation.x -= 0.03;
+		}
+		if ( keyboard.pressed('A') || keyboard.pressed("left") ) {
+				// move left
+				newX = oldX-speed;
+				//watermelon.rotation.y += 0.03;
+		} else if ( keyboard.pressed('D') || keyboard.pressed("right") ) {
+				// move backward
+				newX = oldX+speed;
+				//watermelon.rotation.y -= 0.03;
+		}
+		if ( keyboard.pressed('R') ) {
+				// reset
+			newX = 0;
+			newY = 0;
+			newZ = 0;
+			interactions = [];
+			document.getElementById("interactions").textContent= "";
+		}
+
+		// apply requested movement
+		watermelon.position.x = newX;
+		watermelon.position.y = newY;
+		watermelon.position.z = newZ;
+		watermelonbox.setFromObject(watermelon);     // account for the new position
+		if (watermelonHelper) {
+				watermelonHelper.update();
+		}
+
+		// check for collisions
+		let isCollision = checkCollisions(watermelonbox);	
+		let nightstandCollision = nightstandCollide(watermelonbox);
+		let shelfCollide = bookshelfCollide(watermelonbox);
+		let doorCollision = doorIntCollide(watermelonbox);
+		let scupltIntCollision = sculptCollision(watermelonbox);
+		let sinkCollision = sinkIntCollision(watermelonbox);
+		let bedCollison = bedIntCollision(watermelonbox);
+		let foodCollision = foodIntCollision(watermelonbox);
+
+		// undo requested movement if collision
+		if (isCollision) {
+			watermelon.position.x = oldX;
+			watermelon.position.y = oldY;
+			watermelon.position.z = oldZ;
+		}
+	
+	// if you interact with nightstand, you will have the key to the door
+		if (nightstandCollision) {
+			// check if you interacted with bookshelf key
+			if (interactions.includes("nightstand key")) {
+				if (interactions.includes("door key")) {
+					document.getElementById("interactions").textContent="Found another key! You can know escape."; // so that when you interact with it, it's consistent
+				} else {
+					interactions.push("door key");
+					document.getElementById("interactions").textContent="Found another key! You can now escape.";
+				}
+			} else {
+				document.getElementById("interactions").textContent="Oh no! The nighstand is locked.";
+			}
+			watermelon.position.x = oldX;
+			watermelon.position.y = oldY;
+			watermelon.position.z = oldZ;
+		}
+
+	// if you interact with bookshelf, you will get the nightstand key
+		if (shelfCollide) {
+				if (interactions.includes("nightstand key")) {
+					document.getElementById("interactions").textContent="Found one key! I wonder if it's for the nightstand.";
+				} else {
+					interactions.push("nightstand key");
+					document.getElementById("interactions").textContent="Found one key! I wonder if it's for the nightstand.";
+				}
+			watermelon.position.x = oldX;
+			watermelon.position.y = oldY;
+			watermelon.position.z = oldZ;
+		}
+
+		// intearaction with door. will not let you out unless you have the door key from the nightstand
+		if (doorCollision) {
+				if (interactions.includes("door key")) {
+					youWon();
+				} else {
+					document.getElementById("interactions").textContent="You don't have the key to leave :(";
+				}
+			watermelon.position.x = oldX;
+			watermelon.position.y = oldY;
+			watermelon.position.z = oldZ;
+		}
+
+	// interaction with the sculpture in the corner of the room 
+		if (scupltIntCollision) {
+			document.getElementById("interactions").textContent="Hmm.. it's a canteloupe in the middle with a watermelon revolving it...";
+			earth.rotation.y -= 0.03;
+			watermelon.position.x = oldX;
+			watermelon.position.y = oldY;
+			watermelon.position.z = oldZ;
+		}
+
+		// interaction with sink 
+		if (sinkCollision) {
+			document.getElementById("interactions").textContent= "mmmm water.. refreshing";
+			watermelon.position.x = oldX;
+			watermelon.position.y = oldY;
+			watermelon.position.z = oldZ;
+		}
+		// interaction with bed
+		if (bedCollison) {
+			document.getElementById("interactions").textContent= "Oh look a minecraft bed.. They treat me well.";
+			watermelon.position.x = oldX;
+			watermelon.position.y = oldY;
+			watermelon.position.z = oldZ;
+		}
+
+		// interaction with food tray
+		if (foodCollision) {
+			document.getElementById("interactions").textContent= "Looks good, but I'm a watermelon... I can't eat that";
+			watermelon.position.x = oldX;
+			watermelon.position.y = oldY;
+			watermelon.position.z = oldZ;
+		}
+}
+
+// Render the scene. This is called for each frame of the animation.
+function render(t) {
+		updateAnimation();
+		renderer.render(myscene, camera);
+		requestAnimationFrame( render );
+}
+
+
+//----------------------------------------------------------------------------------
+
+// The init() function is called by the onload event when the document has loaded.
+function init() {
+		try {
+				canvas = document.getElementById("glcanvas");
+				renderer = new THREE.WebGLRenderer( { canvas: canvas, antialias: true} );
+		}
+		catch (e) {
+				document.getElementById("canvas-holder").innerHTML = "<h3><b>WebGL is not available.</b><h3>";
+				return;
+		}
+
+		// create world and render scene
+		createWorld();
+}
+</script>
+
+</head>
+<body onload="init()">
+	 <audio src="bowsers castle.mp3" id="zip" autoplay="autoplay" loop="loop">Unsupported audio!</audio> 
+
+	<div id="play" style="text-align: center; width: 600px; margin-bottom: 10px; border-style: double; padding-bottom: 5px; padding-top: 5px; font-size: 20px; font-weight: bold;"> Click in the window & use WASD to move around. Refresh to restart. Enjoy! </div>
+
+	<div id="box" style="color: darkred;text-align: center; width: 600px; margin-bottom: 10px; border-style:hidden; padding-bottom: 5px; padding-top: 5px; font-size: 15px; font-weight: bold;"> When you interact with something, text will be displayed on the top of the window. </div>
+
+	<div id="interactions" style="width: 600px; text-align: center; position: fixed; z-index: 1; color: white; background-color: black;"></div>
+	</div>
+	
+<div id="interactions", id="play", id="box">
+		<canvas id="glcanvas" width="600" height="400" style="background-color: transparent;"></canvas>
+</div>
+</body>
+</html>

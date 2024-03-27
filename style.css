@@ -1,0 +1,30 @@
+h1, p {
+	text-align: center;
+	font-family: Georgia, 'Times New Roman', Times, serif;
+	width: 600px;
+	border: double;
+	padding-bottom: 5px;
+	padding-top: 5px;
+	padding-right: 5px;
+	padding-left: 5px;
+}
+
+a {
+	display: block;
+	color: darkgreen;
+	text-align: center;
+	width: 600px;
+	text-decoration: underline;
+	font-size: 20px;
+}
+
+a:hover {
+	text-decoration: underline;
+	display: block;
+	color:crimson;
+	font-size: 20px;
+}
+
+h1, p, a, a:hover {
+	font-family: "Lucida Console", "Courier New", monospace;
+}
