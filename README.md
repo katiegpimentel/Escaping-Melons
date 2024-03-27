@@ -1,7 +1,8 @@
-**Katie Pimentel
-**Last worked on: 03/26/2024
+**Katie Pimentel**
 
-** Escaping Melons
+**Last worked on: 03/26/2024**
+
+# Escaping Melons
 
 
 Play on a html window in your preferred browser.
@@ -10,10 +11,13 @@ You are a watermelon trying to escape from a room.
 
 Use WASD or the arrows on your keyboard to move around the room.
 
-W or Up - Moving up 
-A or Left - Moving Left
-S or Down - Moving Down
-D or Right - Moving Right
+- W or Up - Moving up 
+
+- A or Left - Moving Left
+
+- S or Down - Moving Down
+
+- D or Right - Moving Right
 
 Go around the room and interact with different objects to find the key.
 
